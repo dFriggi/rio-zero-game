@@ -16,3 +16,12 @@ Depois, abra `http://localhost:8000`.
 
 - **Entrega 1:** modelagem dos personagens, cenário e configurações de câmera.
 - **Entrega 2:** câmeras, projeção perspectiva e iluminação. O relatório está em [relatorio/entrega-2.md](relatorio/entrega-2.md) e em PDF, em [relatorio/entrega-2.pdf](relatorio/entrega-2.pdf).
+- **Entrega 3:** texturas e mapeamento UV, e o começo do combate. O relatório está em [relatorio/entrega-3.md](relatorio/entrega-3.md) e em PDF, em [relatorio/entrega-3.pdf](relatorio/entrega-3.pdf).
+
+## Texturas
+
+As imagens de `texturas/` são desenhadas pelo script `ferramentas/gerar_texturas.py` (Python, com numpy e Pillow). Para gerar de novo:
+
+```bash
+python ferramentas/gerar_texturas.py
+```

@@ -1,17 +1,40 @@
-// Painel da demonstração: troca de câmera, projeção (fov, matriz e tamanho na tela) e as luzes.
-// Tudo o que ele faz também tem tecla (veja a barra de ajuda no index.html).
+// Painel da demonstração, em três abas: texturas (modos, objetos e coordenadas UV), câmeras e
+// projeção (fov, matriz e tamanho na tela) e luzes. Tudo também tem tecla (veja a barra de ajuda).
 import * as THREE from "three";
 import { conferirComThree } from "./cameras.js";
 
 const hex = (n) => "#" + n.toString(16).padStart(6, "0");
 const num = (v, casas = 1) => v.toFixed(casas).replace(".", ",");
 
-export function criarPainel({ cameras, luzes, medir }) {
+export function criarPainel({ cameras, luzes, medir, texturas }) {
   const el = document.getElementById("painel");
   el.innerHTML = `
-    <h1>Rio <span>Zero</span> · Entrega 2</h1>
-    <p class="sub">Câmeras, projeção perspectiva e iluminação na orla de Copacabana, a primeira fase.</p>
+    <h1>Rio <span>Zero</span> · Entrega 3</h1>
+    <p class="sub">Texturas e mapeamento UV na orla de Copacabana, com as luzes da entrega 2.</p>
+    <div class="abas" role="tablist">
+      <button type="button" role="tab" data-aba="texturas">Texturas</button>
+      <button type="button" role="tab" data-aba="cameras">Câmeras</button>
+      <button type="button" role="tab" data-aba="luzes">Luzes</button>
+    </div>
 
+    <section data-aba="texturas">
+    <h2>Modo <kbd>T</kbd> <kbd>U</kbd></h2>
+    <div class="botoes">
+      <button type="button" data-modo="normal">Com textura</button>
+      <button type="button" data-modo="sem">Sem textura</button>
+      <button type="button" data-modo="uv">Grade UV</button>
+    </div>
+    <p class="nota" id="p-modo-nota"></p>
+    <h2>Objetos texturizados</h2>
+    <div class="lista-tex" id="p-tex-lista"></div>
+    <h2>Coordenadas UV</h2>
+    <p class="nota" id="p-uv-titulo"></p>
+    <canvas id="p-uv" width="288" height="288" aria-label="Coordenadas UV do objeto escolhido sobre a textura"></canvas>
+    <div id="p-uv-dados"></div>
+    <p class="nota" id="p-uv-como"></p>
+    </section>
+
+    <section data-aba="cameras" hidden>
     <h2>Câmera <kbd>C</kbd></h2>
     <div class="botoes" id="p-cameras"></div>
     <p class="nota" id="p-cam-detalhe"></p>
@@ -28,17 +51,165 @@ export function criarPainel({ cameras, luzes, medir }) {
     <p class="nota" id="p-matriz-nota"></p>
     <h3>O mesmo zumbi (2,5 m de altura) perto e longe</h3>
     <div id="p-tamanhos"></div>
+    </section>
 
+    <section data-aba="luzes" hidden>
     <h2>Luzes <kbd>1</kbd>–<kbd>5</kbd></h2>
-    <p class="nota">Shift + número deixa só ela acesa. <kbd>0</kbd> acende todas.</p>
+    <p class="nota">Shift + número deixa só ela acesa. <kbd>0</kbd> acende todas. As texturas continuam
+    recebendo cada luz: apague as outras e veja a lanterna passar pelo relevo do calçadão e das barricadas.</p>
     <div id="p-luzes"></div>
     <div class="botoes">
       <button type="button" id="p-todas">Acender todas</button>
       <button type="button" id="p-helpers">Mostrar as fontes <kbd>L</kbd></button>
     </div>
+    </section>
   `;
 
   const $ = (id) => el.querySelector("#" + id);
+
+  // abas
+  let aba = "texturas";
+  const botoesAba = [...el.querySelectorAll(".abas button")];
+  function mostrarAba(nome) {
+    aba = nome;
+    botoesAba.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.aba === nome)));
+    el.querySelectorAll("section[data-aba]").forEach((s) => (s.hidden = s.dataset.aba !== nome));
+  }
+  botoesAba.forEach((b) => b.addEventListener("click", () => mostrarAba(b.dataset.aba)));
+  mostrarAba(aba);
+
+  // ---------------------------------------------------------------------------------------------
+  // Texturas: modo de exibição, lista de objetos e o desenho das coordenadas UV
+  // ---------------------------------------------------------------------------------------------
+  const notasModo = {
+    normal: "Cada objeto com a sua imagem, repetindo na escala certa e recebendo as cinco luzes.",
+    sem: "Só a cor média de cada textura: dá para ver o que a imagem acrescenta.",
+    uv: "A mesma grade em tudo: cada quadrado é 1/8 da imagem. Quadrados iguais e sem entortar mostram que o mapeamento não estica.",
+  };
+  const botoesModo = [...el.querySelectorAll("[data-modo]")];
+  botoesModo.forEach((b) =>
+    b.addEventListener("click", () => {
+      texturas.definirModo(b.dataset.modo);
+      sincronizar();
+    }),
+  );
+
+  let escolhido = 0;
+  const botoesTex = texturas.lista.map((item, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "item-tex";
+    const info = texturas.catalogo[item.chave];
+    b.innerHTML = `<img src="texturas/${info.arquivo}" alt="" width="34" height="34"><span><b>${item.rotulo}</b><small>${info.arquivo}</small></span>`;
+    b.addEventListener("click", () => {
+      escolhido = i;
+      texturas.focar(item.mesh);
+      desenharUV();
+      sincronizar();
+    });
+    $("p-tex-lista").append(b);
+    return b;
+  });
+
+  const tela = $("p-uv");
+  const ctx = tela.getContext("2d");
+  const ponto = (atr, i) => [atr.getX(i), atr.getY(i)];
+
+  function desenharUV() {
+    const item = texturas.lista[escolhido];
+    const info = texturas.catalogo[item.chave];
+    const imagem = texturas.tex[item.chave].image;
+    const geo = item.mesh.geometry;
+    const uv = geo.attributes.uv;
+    const indice = geo.index;
+    const mats = Array.isArray(item.mesh.material) ? item.mesh.material : null;
+    let grupos = geo.groups.length ? geo.groups : [{ start: 0, count: indice ? indice.count : uv.count, materialIndex: 0 }];
+    // cilindro e cone: só a lateral (as tampas ficam escondidas e embolariam o desenho)
+    const lateral = geo.type === "CylinderGeometry" || geo.type === "ConeGeometry";
+    if (lateral) grupos = grupos.slice(0, 1);
+
+    // triângulos que usam esta textura (na cabeça, só a face da frente)
+    const tris = [];
+    for (const g of grupos) {
+      if (mats && mats[g.materialIndex].userData.textura !== item.chave) continue;
+      for (let k = g.start; k < g.start + g.count; k += 3) {
+        const a = indice ? indice.getX(k) : k;
+        const b = indice ? indice.getX(k + 1) : k + 1;
+        const c = indice ? indice.getX(k + 2) : k + 2;
+        tris.push([ponto(uv, a), ponto(uv, b), ponto(uv, c)]);
+      }
+    }
+    let minU = Infinity;
+    let maxU = -Infinity;
+    let minV = Infinity;
+    let maxV = -Infinity;
+    for (const t of tris) {
+      for (const [u, v] of t) {
+        minU = Math.min(minU, u);
+        maxU = Math.max(maxU, u);
+        minV = Math.min(minV, v);
+        maxV = Math.max(maxV, v);
+      }
+    }
+    // janela em número inteiro de repetições da imagem. Se o objeto inteiro couber em até 16
+    // repetições, aparece inteiro; os planos enormes do chão mostram só um trecho de 3 × 3.
+    const u0 = Math.floor(minU + 1e-6);
+    const v0 = Math.floor(minV + 1e-6);
+    let du = Math.max(1, Math.ceil(maxU - 1e-6) - u0);
+    let dv = Math.max(1, Math.ceil(maxV - 1e-6) - v0);
+    const cortado = Math.max(du, dv) > 16;
+    if (cortado) du = dv = 3;
+    const S = tela.width;
+    const escala = S / Math.max(du, dv);
+    const px = (u) => (u - u0) * escala;
+    const py = (v) => S - (v - v0) * escala;
+
+    ctx.clearRect(0, 0, S, S);
+    ctx.imageSmoothingEnabled = true;
+    for (let i = 0; i < du; i++) {
+      for (let j = 0; j < dv; j++) ctx.drawImage(imagem, i * escala, S - (j + 1) * escala, escala, escala);
+    }
+    // limites de cada repetição da imagem
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    for (let i = 1; i < du; i++) {
+      ctx.moveTo(i * escala, S);
+      ctx.lineTo(i * escala, S - dv * escala);
+    }
+    for (let j = 1; j < dv; j++) {
+      ctx.moveTo(0, S - j * escala);
+      ctx.lineTo(du * escala, S - j * escala);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // as arestas dos triângulos, no lugar onde cada vértice cai na imagem
+    for (const [larg, cor] of [[3.5, "rgba(0,0,0,0.65)"], [1.5, "#b7ff3b"]]) {
+      ctx.strokeStyle = cor;
+      ctx.lineWidth = larg;
+      ctx.beginPath();
+      for (const t of tris) {
+        ctx.moveTo(px(t[0][0]), py(t[0][1]));
+        ctx.lineTo(px(t[1][0]), py(t[1][1]));
+        ctx.lineTo(px(t[2][0]), py(t[2][1]));
+        ctx.closePath();
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#b7ff3b";
+    for (const t of tris) for (const [u, v] of t) ctx.fillRect(px(u) - 2, py(v) - 2, 4, 4);
+
+    $("p-uv-titulo").textContent = `${item.rotulo}: ${info.arquivo} (${imagem.width} × ${imagem.height} px)`;
+    $("p-uv-dados").innerHTML = `
+      <div class="linha"><span>u vai de</span><b>${num(minU, 2)} a ${num(maxU, 2)}</b></div>
+      <div class="linha"><span>v vai de</span><b>${num(minV, 2)} a ${num(maxV, 2)}</b></div>
+      <div class="linha"><span>triângulos com esta textura${lateral ? " (lateral)" : ""}</span><b>${tris.length}</b></div>
+      <div class="linha"><span>${info.metros ? "uma imagem cobre" : "mapeamento"}</span><b>${info.metros ? num(info.metros, info.metros % 1 ? 1 : 0) + " m" : "a face inteira"}</b></div>
+      ${cortado ? '<p class="nota">O objeto é maior que a janela: aparecem só 3 × 3 repetições da imagem.</p>' : ""}`;
+    $("p-uv-como").textContent = item.como;
+  }
+  desenharUV();
 
   // câmeras
   const botoesCamera = cameras.modos.map((m, i) => {
@@ -127,6 +298,9 @@ export function criarPainel({ cameras, luzes, medir }) {
       linha.classList.toggle("apagada", !f.ligada);
     });
     $("p-helpers").setAttribute("aria-pressed", String(luzes.helpersVisiveis));
+    botoesModo.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.modo === texturas.modo)));
+    $("p-modo-nota").textContent = notasModo[texturas.modo];
+    botoesTex.forEach((b, i) => b.setAttribute("aria-pressed", String(i === escolhido)));
   }
 
   // números que mudam a cada quadro (atualizados 8 vezes por segundo)
@@ -136,7 +310,7 @@ export function criarPainel({ cameras, luzes, medir }) {
   let espera = 0;
   function atualizar(dt) {
     espera -= dt;
-    if (espera > 0 || el.classList.contains("oculto")) return;
+    if (espera > 0 || el.classList.contains("oculto") || aba !== "cameras") return;
     espera = 0.125;
 
     const cam = cameras.camera;
@@ -181,6 +355,7 @@ export function criarPainel({ cameras, luzes, medir }) {
   return {
     sincronizar,
     atualizar,
+    mostrarAba,
     alternarVisivel() {
       el.classList.toggle("oculto");
     },

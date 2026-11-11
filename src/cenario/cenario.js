@@ -2,6 +2,36 @@
 // O eixo x corre ao longo da praia; -z vai para a cidade (prédios e avenida) e +z para o mar.
 // Os objetos da entrega 1 (quiosque, carro, barricada e poste) continuam aqui, agora no lugar deles na orla.
 import * as THREE from "three";
+import { CATALOGO, escalarUV, materialTexturizado, uvEmMetros } from "../texturas.js";
+
+// Texturas carregadas (criarCenario recebe) e um objeto de exemplo de cada uma, para o painel
+// mostrar as coordenadas UV.
+let T = null;
+const exemplos = {};
+const lembrar = (chave, mesh) => {
+  if (!exemplos[chave]) exemplos[chave] = mesh;
+  return mesh;
+};
+
+// Material texturizado, um por combinação de textura e cor (a cor tinge as texturas em cinza)
+const materiaisTex = new Map();
+function matT(chave, cor = 0xffffff, relevo = null, escalaRelevo = 1) {
+  const k = `${chave}:${cor}`;
+  if (!materiaisTex.has(k)) {
+    materiaisTex.set(k, materialTexturizado(T[chave], { cor, relevo: relevo && T[relevo], escalaRelevo }));
+  }
+  return materiaisTex.get(k);
+}
+
+// Caixa texturizada: as coordenadas UV são recalculadas em metros (a textura não estica)
+function caixaT(w, h, d, chave, cor, x, y, z, relevo = null) {
+  const geo = uvEmMetros(new THREE.BoxGeometry(w, h, d), CATALOGO[chave].metros);
+  const m = new THREE.Mesh(geo, matT(chave, cor, relevo, 2));
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
 
 // Gerador pseudoaleatório com semente: o cenário sai igual toda vez (bom para comparar prints).
 function semente(s) {
@@ -38,14 +68,15 @@ function sombras(grupo) {
   });
 }
 
-// Faixas do chão, de um lado ao outro da orla.
+// Faixas do chão, de um lado ao outro da orla, com a textura repetindo a cada "metros" do catálogo.
 const LARGURA = 420;
-function faixa(z0, z1, cor, y = 0) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(LARGURA, z1 - z0), mat(cor));
+function faixa(z0, z1, chave, cor = 0xffffff, y = 0, relevo = null) {
+  const geo = uvEmMetros(new THREE.PlaneGeometry(LARGURA, z1 - z0), CATALOGO[chave].metros);
+  const m = new THREE.Mesh(geo, matT(chave, cor, relevo, 1.5));
   m.rotation.x = -Math.PI / 2;
   m.position.set(0, y, (z0 + z1) / 2);
   m.receiveShadow = true;
-  return m;
+  return lembrar(chave, m);
 }
 
 // Onde cada parte da orla começa e termina (em z).
@@ -136,8 +167,14 @@ function criarPredios(scene) {
     const larg = 10 + aleatorio() * 9;
     const alt = 15 + aleatorio() * 32;
     const prof = 14;
-    const predio = caixa(larg, alt, prof, mat(cores[i % cores.length]), x + larg / 2, alt / 2, frente - prof / 2);
-    predio.castShadow = false;
+    // a caixa sobe para começar no chão: assim o y local é a altura de verdade e as faixas das
+    // lajes na textura (a cada 3,2 m) caem entre as janelas em todos os prédios
+    const geo = new THREE.BoxGeometry(larg, alt, prof).translate(0, alt / 2, 0);
+    uvEmMetros(geo, CATALOGO.reboco.metros);
+    const predio = new THREE.Mesh(geo, matT("reboco", cores[i % cores.length]));
+    predio.position.set(x + larg / 2, 0, frente - prof / 2);
+    predio.receiveShadow = true;
+    if (x > -12 && x < 8) lembrar("reboco", predio);
     scene.add(predio);
 
     // a cidade está quase sem energia: alguns prédios apagados, outros com poucas janelas acesas
@@ -171,12 +208,12 @@ function criarPredios(scene) {
 // Chão: calçada, avenida, calçadão, areia e mar
 // ---------------------------------------------------------------------------------------------
 function criarChao(scene) {
-  scene.add(faixa(...ZONAS.calcadaPredios, 0x6c665e));
-  scene.add(faixa(...ZONAS.avenida, 0x2b2c31));
-  scene.add(faixa(...ZONAS.calcadao, 0xa69f92));
-  scene.add(faixa(5.4, 6, 0x7d776d, 0.003)); // borda do calçadão
-  scene.add(faixa(6, 40, 0xc4ad80));
-  scene.add(faixa(40, 46, 0x8a7656, 0.001)); // areia molhada
+  scene.add(faixa(...ZONAS.calcadaPredios, "concreto", 0x9a948b));
+  scene.add(faixa(...ZONAS.avenida, "asfalto"));
+  scene.add(faixa(...ZONAS.calcadao, "calcadao", 0xffffff, 0, "calcadaoRelevo"));
+  scene.add(faixa(5.4, 6, "concreto", 0x8a847b, 0.003)); // borda do calçadão
+  scene.add(faixa(6, 40, "areia"));
+  scene.add(faixa(40, 46, "areia", 0x9c8c70, 0.001)); // areia molhada
 
   // linha dupla amarela no meio da avenida e o tracejado branco das faixas
   for (const dz of [-0.18, 0.18]) {
@@ -200,8 +237,8 @@ function criarChao(scene) {
   scene.add(tracos);
 
   // meio-fio dos dois lados da avenida
-  scene.add(caixa(LARGURA, 0.18, 0.35, mat(0x8d8a84), 0, 0.09, ZONAS.avenida[1]));
-  scene.add(caixa(LARGURA, 0.18, 0.35, mat(0x8d8a84), 0, 0.09, ZONAS.avenida[0]));
+  scene.add(caixaT(LARGURA, 0.18, 0.35, "concreto", 0xc4c0b8, 0, 0.09, ZONAS.avenida[1]));
+  scene.add(caixaT(LARGURA, 0.18, 0.35, "concreto", 0xc4c0b8, 0, 0.09, ZONAS.avenida[0]));
 }
 
 function criarMar(scene) {
@@ -249,8 +286,10 @@ function criarMar(scene) {
 // ---------------------------------------------------------------------------------------------
 function criarQuiosque(scene, x, z, rotY) {
   const g = new THREE.Group();
-  g.add(caixa(3, 2.2, 3, mat(0x9a6a3a), 0, 1.1, 0));
-  const telhado = new THREE.Mesh(new THREE.ConeGeometry(2.8, 1.2, 4), mat(0xc0392b));
+  g.add(lembrar("madeira", caixaT(3, 2.2, 3, "madeira", 0xffffff, 0, 1.1, 0)));
+  // no cone, o u dá a volta (4 lados de 3,96 m) e o v sobe pela água do telhado (3,05 m)
+  const geoTelhado = escalarUV(new THREE.ConeGeometry(2.8, 1.2, 4), 4 * 3.96, Math.hypot(2.8, 1.2));
+  const telhado = lembrar("telha", new THREE.Mesh(geoTelhado, matT("telha")));
   telhado.position.y = 2.8;
   telhado.rotation.y = Math.PI / 4;
   g.add(telhado);
@@ -262,9 +301,8 @@ function criarQuiosque(scene, x, z, rotY) {
 
 function criarCarro(scene, x, z, rotY, cor = 0x8a1c1c) {
   const g = new THREE.Group();
-  const lataria = mat(cor);
-  g.add(caixa(1.8, 0.8, 4.2, lataria, 0, 0.6, 0));
-  g.add(caixa(1.6, 0.6, 2.2, lataria, 0, 1.3, -0.2));
+  g.add(lembrar("lataria", caixaT(1.8, 0.8, 4.2, "lataria", cor, 0, 0.6, 0)));
+  g.add(caixaT(1.6, 0.6, 2.2, "lataria", cor, 0, 1.3, -0.2));
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
@@ -272,8 +310,9 @@ function criarCarro(scene, x, z, rotY, cor = 0x8a1c1c) {
 
 function criarBarricada(scene, x, z, rotY) {
   const g = new THREE.Group();
-  const concreto = mat(0x8d8f94);
-  for (let i = 0; i < 3; i++) g.add(caixa(1, 0.9, 0.8, concreto, -1.1 + i * 1.1, 0.45, 0));
+  for (let i = 0; i < 3; i++) {
+    g.add(lembrar("barricada", caixaT(1, 0.9, 0.8, "concreto", 0xc8c9cc, -1.1 + i * 1.1, 0.45, 0, "concretoRelevo")));
+  }
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
@@ -303,7 +342,7 @@ function criarPoste(scene, x, z, materialLampada) {
 // ---------------------------------------------------------------------------------------------
 function criarCoqueiro(scene, x, z, inclinacao, rotY) {
   const g = new THREE.Group();
-  const tronco = mat(0x6e5639);
+  const tronco = matT("tronco");
   const folha = mat(0x2e5a2a);
   let px = 0;
   let py = 0;
@@ -311,7 +350,10 @@ function criarCoqueiro(scene, x, z, inclinacao, rotY) {
   for (let i = 0; i < 5; i++) {
     const h = 1.6;
     ang += inclinacao / 5;
-    const gomo = new THREE.Mesh(new THREE.CylinderGeometry(0.17 - i * 0.015, 0.2 - i * 0.015, h, 7), tronco);
+    // u dá a volta no tronco (perímetro de ~1,1 m) e v sobe pelo gomo (1,6 m)
+    const raio = 0.2 - i * 0.015;
+    const geoGomo = escalarUV(new THREE.CylinderGeometry(raio - 0.03, raio, h, 7), 2 * Math.PI * raio, h);
+    const gomo = lembrar("tronco", new THREE.Mesh(geoGomo, tronco));
     gomo.position.set(px + (Math.sin(ang) * h) / 2, py + (Math.cos(ang) * h) / 2, 0);
     gomo.rotation.z = -ang;
     px += Math.sin(ang) * h;
@@ -343,15 +385,14 @@ function criarCoqueiro(scene, x, z, inclinacao, rotY) {
 function criarPosto(scene, x, z) {
   const g = new THREE.Group();
   const escuro = mat(0x3a3f46);
-  const branco = mat(0xd8d2c4);
   const vermelho = mat(0xb8322a);
   for (const [dx, dz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]]) {
     g.add(caixa(0.2, 4.2, 0.2, escuro, dx, 2.1, dz));
   }
   g.add(caixa(3.4, 0.2, 3.4, escuro, 0, 4.2, 0));
-  g.add(caixa(3, 2, 3, branco, 0, 5.3, 0));
+  g.add(caixaT(3, 2, 3, "madeira", 0xe6e0d4, 0, 5.3, 0));
   g.add(caixa(3.04, 0.45, 3.04, vermelho, 0, 4.55, 0));
-  g.add(caixa(3.6, 0.25, 3.6, vermelho, 0, 6.42, 0));
+  g.add(caixaT(3.6, 0.25, 3.6, "telha", 0xffffff, 0, 6.42, 0));
   g.position.set(x, 0, z);
   scene.add(g);
 }
@@ -359,7 +400,8 @@ function criarPosto(scene, x, z) {
 // Fogueira num tambor, dos sobreviventes. A luz dela fica em luzes.js; aqui só o tambor e as chamas.
 function criarFogueira(scene, x, z) {
   const g = new THREE.Group();
-  const tambor = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.4, 0.95, 14), mat(0x4a3324));
+  const geoTambor = escalarUV(new THREE.CylinderGeometry(0.42, 0.4, 0.95, 14), (2 * Math.PI * 0.41) / 2, 0.95 / 2);
+  const tambor = new THREE.Mesh(geoTambor, matT("lataria", 0x7a5a40));
   tambor.position.y = 0.475;
   tambor.castShadow = true;
   tambor.receiveShadow = true;
@@ -381,7 +423,8 @@ function criarFogueira(scene, x, z) {
 // ---------------------------------------------------------------------------------------------
 // Monta a orla inteira
 // ---------------------------------------------------------------------------------------------
-export function criarCenario(scene) {
+export function criarCenario(scene, texturas) {
+  T = texturas;
   scene.background = new THREE.Color(COR_HORIZONTE);
   scene.fog = new THREE.Fog(COR_HORIZONTE, 45, 260);
 
@@ -419,6 +462,7 @@ export function criarCenario(scene) {
   return {
     postes: { lista: postes, materialLampada },
     fogueira,
+    exemplos,
     limites: { xMin: -21.5, xMax: 23.5, zMin: -25, zMax: 40 },
     atualizar(t) {
       ondular(t);

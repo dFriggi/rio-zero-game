@@ -1,11 +1,15 @@
-// Entrega 2: câmeras, projeção perspectiva e iluminação.
-// Os personagens e objetos da entrega 1 agora estão na orla de Copacabana à noite, com quatro
-// câmeras (tecla C) e cinco fontes de luz que ligam e desligam (teclas 1 a 5).
+// Entrega 3: texturas e mapeamento UV.
+// A orla de Copacabana da entrega 2 agora tem textura no chão, nas fachadas, nos objetos e nos
+// personagens, com as mesmas quatro câmeras e as cinco luzes. Também entra o começo do combate:
+// a besta dispara, os zumbis caem e o Rafael tem vida.
 import * as THREE from "three";
+import { carregarTexturas, CATALOGO, definirModoTextura } from "./texturas.js";
 import { criarCenario } from "./cenario/cenario.js";
 import { criarLuzes } from "./cenario/luzes.js";
 import { criarCameras } from "./cameras.js";
 import { criarPainel } from "./painel.js";
+import { criarCombate } from "./combate.js";
+import { criarHud } from "./hud.js";
 import { criarRafael } from "./personagens/Rafael.js";
 import { criarZumbi } from "./personagens/Zumbi.js";
 import { animarCaminhada, criarComportamentoZumbis } from "./personagens/movimento.js";
@@ -20,17 +24,21 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 document.body.appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
-const cenario = criarCenario(scene);
+// as imagens de texturas/ são carregadas antes de montar a cena
+const tex = await carregarTexturas(renderer);
+document.getElementById("carregando")?.remove();
 
-// Personagens da entrega 1, sem mudança no modelo
-const rafael = criarRafael();
-rafael.position.set(0, 0, 1);
+const scene = new THREE.Scene();
+const cenario = criarCenario(scene, tex);
+
+// Personagens da entrega 1, agora com rosto e roupas texturizados
+const INICIO = new THREE.Vector3(0, 0, 1);
+const rafael = criarRafael(tex);
+rafael.position.copy(INICIO);
 rafael.rotation.y = Math.PI; // de frente para a avenida, de onde os zumbis vêm
 scene.add(rafael);
 
-// Os dois zumbis da entrega 1 perto dele e outros iguais cada vez mais longe, ao longo da orla:
-// como o modelo é o mesmo, a diferença de tamanho na tela é só efeito da perspectiva.
+// Os dois zumbis da entrega 1 perto dele e outros iguais cada vez mais longe, ao longo da orla
 const zumbis = [
   [0, -3, -6],
   [1, 4, -4],
@@ -40,7 +48,7 @@ const zumbis = [
   [1, -34, -19],
   [0, 84, -9],
 ].map(([variacao, x, z]) => {
-  const zumbi = criarZumbi(variacao);
+  const zumbi = criarZumbi(variacao, tex);
   zumbi.position.set(x, 0, z);
   zumbi.rotation.y = Math.atan2(rafael.position.x - x, rafael.position.z - z); // virado para o Rafael
   scene.add(zumbi);
@@ -56,10 +64,39 @@ for (const p of [rafael, ...zumbis]) {
   });
 }
 
-const atualizarZumbis = criarComportamentoZumbis(zumbis, rafael, { oeste: -23.5, leste: 25.5 });
+// Combate: os zumbis avisam quando atacam e quando morrem; o combate cuida da vida e dos virotes
+let combate = null;
+const comportamento = criarComportamentoZumbis(zumbis, rafael, { oeste: -23.5, leste: 25.5 }, {
+  aoAtacar: (dano) => combate.ferirRafael(dano),
+  aoMorrer: () => combate.contarAbate(),
+});
+combate = criarCombate({ scene, rafael, zumbis: comportamento, posicaoInicial: INICIO });
+const hud = criarHud();
 
 const luzes = criarLuzes(scene, { postes: cenario.postes, fogueira: cenario.fogueira, rafael });
 const cameras = criarCameras(renderer, rafael);
+
+// Texturas: o modo de exibição e um objeto de exemplo de cada textura, com a explicação do UV
+let modoTextura = "normal";
+const ex = cenario.exemplos;
+const pR = rafael.userData.pecas;
+const pZ = zumbis[1].userData.pecas;
+const listaTexturas = [
+  { rotulo: "Calçadão", chave: "calcadao", mesh: ex.calcadao, como: "Plano de 420 × 20 m. u = x ÷ 3 m e v = y ÷ 3 m: a imagem se repete a cada 3 m, e o mapa de relevo usa as mesmas coordenadas." },
+  { rotulo: "Avenida", chave: "asfalto", mesh: ex.asfalto, como: "Plano de 420 × 12 m. u = x ÷ 4 m e v = y ÷ 4 m." },
+  { rotulo: "Areia", chave: "areia", mesh: ex.areia, como: "Plano de 420 × 34 m. u = x ÷ 3 m e v = y ÷ 3 m." },
+  { rotulo: "Fachada", chave: "reboco", mesh: ex.reboco, como: "Caixa do prédio com a base no chão: v = altura ÷ 6,4 m, então as faixas das lajes caem entre as janelas em todos os prédios. A cor de cada prédio tinge a imagem." },
+  { rotulo: "Barricada", chave: "concreto", mesh: ex.barricada, como: "Bloco de 1 × 0,9 × 0,8 m. Cada face usa as duas coordenadas que ficam deitadas nela, divididas por 1 m." },
+  { rotulo: "Quiosque", chave: "madeira", mesh: ex.madeira, como: "Caixa de 3 × 2,2 × 3 m. Tábuas verticais em todas as faces, a cada 1,5 m de imagem." },
+  { rotulo: "Telhado", chave: "telha", mesh: ex.telha, como: "Cone de 4 lados: u dá a volta (4 × 3,96 m) e v sobe pela água do telhado (3,05 m)." },
+  { rotulo: "Carro", chave: "lataria", mesh: ex.lataria, como: "Caixa da lataria em metros, a cada 2 m. A imagem é cinza; a cor de cada carro vem do material." },
+  { rotulo: "Coqueiro", chave: "tronco", mesh: ex.tronco, como: "Cilindro: u dá a volta no tronco (perímetro ÷ 1 m) e v sobe pelo gomo (1,6 m)." },
+  { rotulo: "Rosto do Rafael", chave: "rostoRafael", mesh: pR.cranio, deFrente: true, como: "Só a face da frente da cabeça usa esta imagem, com o UV padrão da caixa: os cantos vão de (0, 0) a (1, 1) e a imagem inteira cobre a face." },
+  { rotulo: "Jaqueta", chave: "couro", mesh: rafael.userData.abaJaqueta, deFrente: true, como: "Aba da jaqueta (caixa de 0,26 × 0,82 × 0,42 m). UV em metros, a cada 50 cm." },
+  { rotulo: "Calça", chave: "jeans", mesh: pR.coxa, deFrente: true, como: "Cápsula da coxa: u dá a volta na perna (perímetro ÷ 0,5 m) e v percorre o comprimento ÷ 0,5 m." },
+  { rotulo: "Rosto do zumbi", chave: "rostoZumbi", mesh: pZ.cranio, deFrente: true, como: "Mesma cabeça e mesmo UV do Rafael, com outra imagem: o modelo é um só e a textura muda o personagem." },
+  { rotulo: "Camisa do zumbi", chave: "camisaRasgada", mesh: pZ.peito, deFrente: true, como: "Peito (caixa de 0,72 × 0,42 × 0,4 m), a cada 60 cm. A imagem é cinza; a cor da camisa vem do material." },
+];
 const painel = criarPainel({
   cameras,
   luzes,
@@ -67,6 +104,22 @@ const painel = criarPainel({
     { nome: "Zumbi perto", obj: zumbis[0] },
     { nome: "Zumbi longe", obj: zumbis[4] },
   ],
+  texturas: {
+    lista: listaTexturas,
+    catalogo: CATALOGO,
+    tex,
+    get modo() {
+      return modoTextura;
+    },
+    definirModo(modo) {
+      modoTextura = modo;
+      definirModoTextura(modo, tex.gradeUV);
+    },
+    focar(mesh) {
+      const item = listaTexturas.find((i) => i.mesh === mesh);
+      cameras.focar(mesh, item?.deFrente);
+    },
+  },
 });
 
 // Ajudas visuais (G): grade de 1 m e eixos (X vermelho, Y verde, Z azul), como na entrega 1
@@ -81,14 +134,21 @@ ajudas.forEach((a) => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Teclas
+// Teclas e mouse
 // ---------------------------------------------------------------------------------------------
 const input = new Input();
 const TECLAS_LUZ = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"];
 const TECLAS_LUZ_NUM = ["Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
 
+// clique atira nas câmeras de 1ª e 3ª pessoa (nas outras o mouse gira a câmera)
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (e.button === 0 && (cameras.modo.id === "primeira" || cameras.modo.id === "terceira")) combate.atirar();
+});
+
 function lerTeclas() {
   let mudou = false;
+  if (input.wasPressed("Space")) combate.atirar();
+  if (input.wasPressed("KeyR")) combate.reiniciar();
   if (input.wasPressed("KeyC")) {
     cameras.proxima();
     mudou = true;
@@ -119,6 +179,19 @@ function lerTeclas() {
   }
   if (input.wasPressed("KeyL")) {
     luzes.alternarHelpers();
+    mudou = true;
+  }
+  // T liga e desliga as texturas; U troca todas pela grade UV
+  if (input.wasPressed("KeyT")) {
+    painel.mostrarAba("texturas");
+    modoTextura = modoTextura === "normal" ? "sem" : "normal";
+    definirModoTextura(modoTextura, tex.gradeUV);
+    mudou = true;
+  }
+  if (input.wasPressed("KeyU")) {
+    painel.mostrarAba("texturas");
+    modoTextura = modoTextura === "uv" ? "normal" : "uv";
+    definirModoTextura(modoTextura, tex.gradeUV);
     mudou = true;
   }
   if (input.wasPressed("KeyG")) ajudas.forEach((a) => (a.visible = !a.visible));
@@ -174,16 +247,20 @@ function loop() {
   const dt = Math.min(relogio.getDelta(), 0.05);
   const t = relogio.elapsedTime;
   lerTeclas();
-  moverRafael(dt);
-  atualizarZumbis(dt);
+  if (!combate.estado.caido) moverRafael(dt);
+  comportamento.atualizar(dt, !combate.estado.caido);
+  combate.atualizar(dt);
   cenario.atualizar(t);
   luzes.atualizar(t);
   cameras.atualizar(dt);
   painel.atualizar(dt);
+  hud.atualizar(combate.estado, cameras.modo.id, dt);
   input.endFrame();
 
   // [PROJEÇÃO] onde a matriz é APLICADA: o render envia camera.projectionMatrix para o shader de
   // vértice de cada material, que calcula gl_Position = projectionMatrix * modelViewMatrix * posição.
+  // [TEXTURA] no mesmo render, o shader de fragmento de cada material lê a imagem (map) na
+  // coordenada UV interpolada entre os vértices e multiplica pela cor e pela luz que chega ali.
   renderer.render(scene, cameras.camera);
   requestAnimationFrame(loop);
 }

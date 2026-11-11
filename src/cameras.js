@@ -157,6 +157,27 @@ export function criarCameras(renderer, rafael) {
       orto = valor;
       if (orto) atualizarOrto();
     },
+    // leva a câmera geral até um objeto (painel de texturas). Peças de personagem são vistas de frente;
+    // os planos enormes do chão mostram só um trecho perto do Rafael.
+    focar(objeto, deFrente = false) {
+      orto = false;
+      this.selecionar(0);
+      objeto.updateWorldMatrix(true, false);
+      const caixa = new THREE.Box3().setFromObject(objeto);
+      const centro = caixa.getCenter(new THREE.Vector3());
+      let raio = caixa.getSize(new THREE.Vector3()).length() / 2;
+      if (raio > 40) {
+        centro.set(rafael.position.x + 3, 0, rafael.position.z - 2);
+        raio = 3;
+      }
+      const dist = THREE.MathUtils.clamp(raio * 3.2, 1.4, 30);
+      const dir = deFrente
+        ? objeto.getWorldDirection(new THREE.Vector3()).setY(0).normalize().add(new THREE.Vector3(0, 0.35, 0))
+        : new THREE.Vector3(0.55, 0.5, 0.7);
+      orbita.target.copy(centro);
+      geral.position.copy(centro).addScaledVector(dir.normalize(), dist);
+      orbita.update();
+    },
     definirFov(graus) {
       const cam = modos[indice].camera;
       cam.fov = THREE.MathUtils.clamp(Math.round(graus), 15, 110);

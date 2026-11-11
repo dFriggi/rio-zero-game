@@ -1,10 +1,11 @@
 // Usa a humanoide, com pele esverdeada, olhos vermelhos, camisa rasgada, sangue e um pé sem chinelo.
+// Entrega 3: rosto de zumbi, camisa rasgada e manchada e calça jeans texturizados.
 import * as THREE from "three";
 import { criarHumanoide, caixa } from "./Humanoide.js";
 
 const mat = (color) => new THREE.MeshLambertMaterial({ color });
 
-export function criarZumbi(variacao = 0) {
+export function criarZumbi(variacao = 0, tex = {}) {
   const camisas = [0xff6f91, 0xf2c14e];
   const g = criarHumanoide({
     pele: 0x8fa391,
@@ -13,6 +14,7 @@ export function criarZumbi(variacao = 0) {
     sapato: 0xd9c9a3,
     cabelo: 0x3b2f2f,
     olhos: 0xaa0000,
+    texturas: { camisa: tex.camisaRasgada, calca: tex.jeans, rosto: tex.rostoZumbi },
   });
   const u = g.userData;
 

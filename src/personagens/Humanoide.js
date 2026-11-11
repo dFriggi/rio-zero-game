@@ -1,11 +1,21 @@
 import * as THREE from "three";
+import { escalarUV, materialTexturizado, uvEmMetros } from "../texturas.js";
 
 const mat = (color) => new THREE.MeshLambertMaterial({ color });
 
+// Tecidos repetem a cada 50 cm. Nas caixas, o UV é calculado em metros; nas cápsulas, o u dá a
+// volta no membro (perímetro) e o v percorre o comprimento, então o tecido não estica.
+const TECIDO = 0.5;
 export const caixa = (w, h, d, material) =>
-  new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  new THREE.Mesh(uvEmMetros(new THREE.BoxGeometry(w, h, d), TECIDO), material);
 export const capsula = (r, comp, material) =>
-  new THREE.Mesh(new THREE.CapsuleGeometry(r, comp, 4, 8), material);
+  new THREE.Mesh(
+    escalarUV(new THREE.CapsuleGeometry(r, comp, 4, 8), (2 * Math.PI * r) / TECIDO, (comp + 2 * r) / TECIDO),
+    material,
+  );
+
+// Material de uma peça: com textura (tingida pela cor da peça) ou só a cor, como na entrega 1
+const materialPeca = (cor, textura) => (textura ? materialTexturizado(textura, { cor }) : mat(cor));
 export const esfera = (r, material) =>
   new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), material);
 export const cilindro = (rt, rb, h, material, lados = 10) =>
@@ -20,12 +30,13 @@ export function criarHumanoide(o = {}) {
     cabelo = 0x2b1b12,
     olhos = 0x111111,
     escala = 1,
+    texturas = {}, // { camisa, calca, rosto }
   } = o;
 
   const m = {
     pele: mat(pele),
-    camisa: mat(camisa),
-    calca: mat(calca),
+    camisa: materialPeca(camisa, texturas.camisa),
+    calca: materialPeca(calca, texturas.calca),
     sapato: mat(sapato),
     cabelo: mat(cabelo),
     olhos: mat(olhos),
@@ -54,7 +65,7 @@ export function criarHumanoide(o = {}) {
     joelho.add(canela, pe);
     pivo.add(coxa, joelho);
     quadril.add(pivo);
-    return { pivo, joelho, pe };
+    return { pivo, joelho, pe, coxa };
   };
 
   // Tronco é uma caixa um pouco mais larga em cima
@@ -72,7 +83,17 @@ export function criarHumanoide(o = {}) {
   pescoco.position.y = 0.85;
   const cabeca = new THREE.Group();
   cabeca.position.y = 1.12;
-  const cranio = caixa(0.42, 0.46, 0.42, m.pele);
+  // O crânio usa o UV padrão da caixa (cada face vai de 0 a 1), e a face da frente (+z, a 5ª da
+  // lista de materiais) recebe a textura do rosto inteira; as outras faces ficam com a pele.
+  m.rosto = texturas.rosto ? materialTexturizado(texturas.rosto) : m.pele;
+  const cranio = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.46, 0.42), [
+    m.pele,
+    m.pele,
+    m.pele,
+    m.pele,
+    m.rosto,
+    m.pele,
+  ]);
   const topoCabelo = caixa(0.46, 0.14, 0.46, m.cabelo);
   topoCabelo.position.y = 0.25;
   const nucaCabelo = caixa(0.46, 0.3, 0.1, m.cabelo);
@@ -135,6 +156,7 @@ export function criarHumanoide(o = {}) {
     bracoE,
     bracoD,
     mats: m,
+    pecas: { cranio, peito, coxa: pernaE.coxa }, // exemplos para o painel de coordenadas UV
   };
   return g;
 }
