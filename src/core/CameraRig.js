@@ -1,5 +1,9 @@
-// Câmeras da cena: quatro pontos de vista, todos com projeção perspectiva, e uma câmera ortográfica
-// que só serve para comparação (tecla P), para mostrar o que a perspectiva muda.
+// Câmeras da cena: quatro pontos de vista, todos com projeção perspectiva, e uma câmera ortográfica que só serve
+// para comparação (tecla P), para mostrar o que a perspectiva muda.
+// Entrega 4: a câmera do jogo passou a ser a de 1ª pessoa (FPS), com as mãos e a arma (camada 2, que só ela vê).
+// A de 3ª pessoa vai por cima do ombro direito e não atravessa obstáculos. As duas seguem o olhar do Rafael
+// (yaw e pitch do mouse). Geral e Posto ficam para o modo apresentação (tecla H, com o jogo pausado).
+// Camadas: 0 = cena, 1 = corpo do Rafael (some na 1ª pessoa, para a câmera não ver o próprio rosto), 2 = arma na mão.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
@@ -27,8 +31,6 @@ export function matrizPerspectiva(fovGraus, aspecto, perto, longe, zoom = 1, des
 }
 
 // Câmera perspectiva que monta a própria matriz com a função acima, em vez da do three.js.
-// O three.js chama updateProjectionMatrix() ao criar a câmera; nós chamamos de novo quando o fov
-// ou o aspecto mudam (redimensionar a janela, teclas - e +).
 export class CameraPerspectiva extends THREE.PerspectiveCamera {
   updateProjectionMatrix() {
     matrizPerspectiva(this.fov, this.aspect, this.near, this.far, this.zoom, this.projectionMatrix);
@@ -44,22 +46,28 @@ export function conferirComThree(camera) {
   const largura = camera.aspect * altura;
   referencia.makePerspective(-largura / 2, largura / 2, topo, topo - altura, camera.near, camera.far);
   let maior = 0;
-  for (let i = 0; i < 16; i++) {
-    maior = Math.max(maior, Math.abs(referencia.elements[i] - camera.projectionMatrix.elements[i]));
-  }
+  for (let i = 0; i < 16; i++) maior = Math.max(maior, Math.abs(referencia.elements[i] - camera.projectionMatrix.elements[i]));
   return maior < 1e-9;
 }
 
 // =============================================================================================
 // As quatro câmeras
 // =============================================================================================
-export function criarCameras(renderer, rafael) {
-  // (se a aba abrir escondida, a janela tem 0 × 0 e o aspecto vira NaN até o primeiro resize)
+export function criarCameras(renderer, rafael, jogador, colisao) {
   const aspecto = () => (window.innerHeight > 0 ? window.innerWidth / window.innerHeight : 16 / 9);
 
-  // 1) Geral: orbital, como na entrega 1 (arrastar gira, roda aproxima)
+  // 1) Primeira pessoa (a do jogo): nos olhos do Rafael, vê a arma na mão (camada 2)
+  const primeira = new CameraPerspectiva(78, aspecto(), 0.03, 700);
+  primeira.rotation.order = "YXZ";
+  primeira.layers.enable(2);
+  // 2) Terceira pessoa: por cima do ombro direito, vê o corpo (camada 1)
+  const terceira = new CameraPerspectiva(78, aspecto(), 0.05, 700);
+  terceira.rotation.order = "YXZ";
+  terceira.layers.enable(1);
+  // 3) Geral: orbital, como na entrega 1 (arrastar gira, roda aproxima)
   const geral = new CameraPerspectiva(55, aspecto(), 0.1, 700);
   geral.position.set(13, 10, 26);
+  geral.layers.enable(1);
   const orbita = new OrbitControls(geral, renderer.domElement);
   orbita.target.set(0, 2.5, -6);
   orbita.maxPolarAngle = Math.PI / 2.08;
@@ -67,44 +75,63 @@ export function criarCameras(renderer, rafael) {
   orbita.maxDistance = 160;
   orbita.enableDamping = true;
   orbita.dampingFactor = 0.08;
+  orbita.enabled = false;
   orbita.update();
-
-  // 2) Terceira pessoa: atrás e acima do Rafael, seguindo com suavidade
-  const terceira = new CameraPerspectiva(60, aspecto(), 0.1, 700);
-  // 3) Primeira pessoa: nos olhos do Rafael
-  const primeira = new CameraPerspectiva(75, aspecto(), 0.05, 700);
-  // 4) Posto 4: câmera fixa no alto do posto de salva-vidas, olhando ao longo da orla
+  // 4) Posto 4: fixa no alto do posto de salva-vidas, olhando ao longo da orla
   const posto = new CameraPerspectiva(42, aspecto(), 0.1, 700);
   posto.position.set(-43, 7.4, 16.8);
   posto.lookAt(4, 1.2, -4);
+  posto.layers.enable(1);
 
   const modos = [
+    { id: "primeira", nome: "1ª pessoa", detalhe: "Pelos olhos do Rafael, com as mãos e a arma. É a câmera do jogo.", camera: primeira, jogo: true },
+    { id: "terceira", nome: "3ª pessoa", detalhe: "Por cima do ombro direito; a mira continua no centro da tela.", camera: terceira, jogo: true },
     { id: "geral", nome: "Geral", detalhe: "Orbital: arraste para girar, roda para aproximar.", camera: geral },
-    { id: "terceira", nome: "3ª pessoa", detalhe: "Atrás do Rafael. A e D giram, W e S andam.", camera: terceira },
-    { id: "primeira", nome: "1ª pessoa", detalhe: "Pelos olhos do Rafael. A e D giram, W e S andam.", camera: primeira },
     { id: "posto", nome: "Posto 4", detalhe: "Fixa no posto de salva-vidas, ao longo da orla.", camera: posto },
   ];
-  modos.forEach((m) => (m.fovPadrao = m.camera.fov));
+  modos.forEach((m) => {
+    m.fovPadrao = m.camera.fov;
+    m.fovExtra = 0; // ajuste do painel por cima da lente do jogo (que muda ao mirar e ao deslizar)
+  });
 
-  // Comparação: câmera ortográfica no mesmo lugar e com o mesmo enquadramento no ponto de foco
   const ortografica = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 700);
+  ortografica.layers.enable(1);
   let indice = 0;
   let orto = false;
+  let tremor = 0;
 
+  const olho = new THREE.Vector3();
+  const dir = new THREE.Vector3();
   const desejada = new THREE.Vector3();
-  const olhar = new THREE.Vector3();
   const foco = new THREE.Vector3();
 
   function seguirRafael(dt, instantaneo = false) {
-    const ry = rafael.rotation.y;
-    const s = Math.sin(ry);
-    const c = Math.cos(ry);
-    const p = rafael.position;
-    desejada.set(p.x - s * 7, p.y + 4.5, p.z - c * 7);
-    terceira.position.lerp(desejada, instantaneo ? 1 : 1 - Math.exp(-6 * dt));
-    terceira.lookAt(olhar.set(p.x + s * 3, p.y + 1.6, p.z + c * 3));
-    primeira.position.set(p.x + s * 0.32, p.y + 2.2, p.z + c * 0.32);
-    primeira.lookAt(olhar.set(p.x + s * 10, p.y + 1.6, p.z + c * 10));
+    const p = jogador.pos;
+    const morto = jogador.deadT;
+    olho.set(p.x, p.y + jogador.alturaOlho * (1 - 0.72 * morto), p.z);
+    tremor = Math.max(0, tremor - dt * 2.5);
+    const t = tremor * tremor * 0.045;
+    primeira.position.copy(olho);
+    primeira.rotation.set(jogador.pitch + (Math.random() - 0.5) * t, jogador.yaw + (Math.random() - 0.5) * t, morto * 0.9);
+    // 3ª pessoa: atrás e à direita do olho, encurtando se bater num obstáculo
+    jogador.direcao(dir);
+    const cy = Math.cos(jogador.yaw);
+    const sy = Math.sin(jogador.yaw);
+    desejada.set(olho.x + cy * 0.7 - dir.x * 2.8, olho.y + 0.25 - dir.y * 2.8, olho.z - sy * 0.7 - dir.z * 2.8);
+    desejada.y = Math.max(0.3, desejada.y);
+    const toque = colisao.segmento(olho, desejada);
+    if (toque) desejada.lerpVectors(olho, desejada, Math.max(0.15, toque.t - 0.08));
+    terceira.position.lerp(desejada, instantaneo ? 1 : 1 - Math.exp(-20 * dt));
+    terceira.rotation.copy(primeira.rotation);
+    // lente: a do jogo (mirar fecha, deslizar abre) mais o ajuste do painel
+    for (const m of modos.slice(0, 2)) {
+      const alvo = jogador.fovAlvo + m.fovExtra;
+      const novo = instantaneo ? alvo : m.camera.fov + (alvo - m.camera.fov) * (1 - Math.exp(-12 * dt));
+      if (Math.abs(novo - m.camera.fov) > 0.01) {
+        m.camera.fov = novo;
+        m.camera.updateProjectionMatrix();
+      }
+    }
   }
   seguirRafael(0, true);
 
@@ -112,7 +139,7 @@ export function criarCameras(renderer, rafael) {
     const m = modos[indice];
     if (m.id === "geral") return geral.position.distanceTo(orbita.target);
     if (m.id === "primeira") return 10;
-    return m.camera.position.distanceTo(foco.copy(rafael.position).setY(1.2));
+    return m.camera.position.distanceTo(foco.copy(rafael.position).setY(1));
   }
 
   function atualizarOrto() {
@@ -157,11 +184,14 @@ export function criarCameras(renderer, rafael) {
       orto = valor;
       if (orto) atualizarOrto();
     },
+    tremer(k) {
+      tremor = Math.min(1, tremor + k);
+    },
     // leva a câmera geral até um objeto (painel de texturas). Peças de personagem são vistas de frente;
     // os planos enormes do chão mostram só um trecho perto do Rafael.
     focar(objeto, deFrente = false) {
       orto = false;
-      this.selecionar(0);
+      this.selecionar(2);
       objeto.updateWorldMatrix(true, false);
       const caixa = new THREE.Box3().setFromObject(objeto);
       const centro = caixa.getCenter(new THREE.Vector3());
@@ -170,18 +200,20 @@ export function criarCameras(renderer, rafael) {
         centro.set(rafael.position.x + 3, 0, rafael.position.z - 2);
         raio = 3;
       }
-      const dist = THREE.MathUtils.clamp(raio * 3.2, 1.4, 30);
-      const dir = deFrente
+      const dist = THREE.MathUtils.clamp(raio * 3.2, 1.2, 30);
+      const d = deFrente
         ? objeto.getWorldDirection(new THREE.Vector3()).setY(0).normalize().add(new THREE.Vector3(0, 0.35, 0))
         : new THREE.Vector3(0.55, 0.5, 0.7);
       orbita.target.copy(centro);
-      geral.position.copy(centro).addScaledVector(dir.normalize(), dist);
+      geral.position.copy(centro).addScaledVector(d.normalize(), dist);
       orbita.update();
     },
     definirFov(graus) {
-      const cam = modos[indice].camera;
-      cam.fov = THREE.MathUtils.clamp(Math.round(graus), 15, 110);
-      cam.updateProjectionMatrix();
+      const m = modos[indice];
+      const g = THREE.MathUtils.clamp(Math.round(graus), 15, 110);
+      if (m.jogo) m.fovExtra = g - jogador.fovAlvo;
+      m.camera.fov = g;
+      m.camera.updateProjectionMatrix();
     },
     resize() {
       for (const m of modos) {

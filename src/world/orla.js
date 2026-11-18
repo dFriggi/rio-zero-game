@@ -1,12 +1,15 @@
 // Cenário da fase 1: a orla de Copacabana à noite.
 // O eixo x corre ao longo da praia; -z vai para a cidade (prédios e avenida) e +z para o mar.
 // Os objetos da entrega 1 (quiosque, carro, barricada e poste) continuam aqui, agora no lugar deles na orla.
+// Entrega 4: cada objeto sólido registra o seu obstáculo na colisão (world/colisao.js), com a mesma posição,
+// o mesmo tamanho e o mesmo giro do modelo. É contra eles que o Rafael, os zumbis e os tiros batem.
 import * as THREE from "three";
-import { CATALOGO, escalarUV, materialTexturizado, uvEmMetros } from "../texturas.js";
+import { CATALOGO, escalarUV, materialTexturizado, uvEmMetros } from "./texturas.js";
 
 // Texturas carregadas (criarCenario recebe) e um objeto de exemplo de cada uma, para o painel
 // mostrar as coordenadas UV.
 let T = null;
+let C = null; // colisão da fase
 const exemplos = {};
 const lembrar = (chave, mesh) => {
   if (!exemplos[chave]) exemplos[chave] = mesh;
@@ -297,6 +300,7 @@ function criarQuiosque(scene, x, z, rotY) {
   g.rotation.y = rotY;
   sombras(g);
   scene.add(g);
+  C.caixa(x, z, 3, 3, rotY, 3.4);
 }
 
 function criarCarro(scene, x, z, rotY, cor = 0x8a1c1c) {
@@ -306,6 +310,7 @@ function criarCarro(scene, x, z, rotY, cor = 0x8a1c1c) {
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
+  C.caixa(x, z, 1.8, 4.2, rotY, 1.7);
 }
 
 function criarBarricada(scene, x, z, rotY) {
@@ -316,6 +321,7 @@ function criarBarricada(scene, x, z, rotY) {
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
+  C.caixa(x, z, 3.2, 0.8, rotY, 0.9);
 }
 
 // Poste: a haste da entrega 1 ganhou braço e luminária. A lâmpada usa um material só para todos,
@@ -334,6 +340,7 @@ function criarPoste(scene, x, z, materialLampada) {
   g.add(lampada);
   g.position.set(x, 0, z);
   scene.add(g);
+  if (Math.abs(x) < 60) C.circulo(x, z, 0.16, 5);
   return { x, z, pontoLuz: new THREE.Vector3(x, 4.55, z + 1.3) };
 }
 
@@ -379,6 +386,7 @@ function criarCoqueiro(scene, x, z, inclinacao, rotY) {
   g.rotation.y = rotY;
   sombras(g);
   scene.add(g);
+  C.circulo(x, z, 0.24, 2.6);
 }
 
 // Posto de salva-vidas: a câmera fixa "Posto 4" fica no alto dele.
@@ -395,6 +403,7 @@ function criarPosto(scene, x, z) {
   g.add(caixaT(3.6, 0.25, 3.6, "telha", 0xffffff, 0, 6.42, 0));
   g.position.set(x, 0, z);
   scene.add(g);
+  for (const [dx, dz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]]) C.circulo(x + dx, z + dz, 0.14, 4.2);
 }
 
 // Fogueira num tambor, dos sobreviventes. A luz dela fica em luzes.js; aqui só o tambor e as chamas.
@@ -417,14 +426,16 @@ function criarFogueira(scene, x, z) {
   });
   g.position.set(x, 0, z);
   scene.add(g);
+  C.circulo(x, z, 0.45, 1.0);
   return { chamas, pontoLuz: new THREE.Vector3(x, 1.7, z) };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Monta a orla inteira
 // ---------------------------------------------------------------------------------------------
-export function criarCenario(scene, texturas) {
+export function criarCenario(scene, texturas, colisao) {
   T = texturas;
+  C = colisao;
   scene.background = new THREE.Color(COR_HORIZONTE);
   scene.fog = new THREE.Fog(COR_HORIZONTE, 45, 260);
 

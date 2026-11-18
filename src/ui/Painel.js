@@ -1,7 +1,7 @@
 // Painel da demonstração, em três abas: texturas (modos, objetos e coordenadas UV), câmeras e
 // projeção (fov, matriz e tamanho na tela) e luzes. Tudo também tem tecla (veja a barra de ajuda).
 import * as THREE from "three";
-import { conferirComThree } from "./cameras.js";
+import { conferirComThree } from "../core/CameraRig.js";
 
 const hex = (n) => "#" + n.toString(16).padStart(6, "0");
 const num = (v, casas = 1) => v.toFixed(casas).replace(".", ",");
@@ -9,8 +9,8 @@ const num = (v, casas = 1) => v.toFixed(casas).replace(".", ",");
 export function criarPainel({ cameras, luzes, medir, texturas }) {
   const el = document.getElementById("painel");
   el.innerHTML = `
-    <h1>Rio <span>Zero</span> · Entrega 3</h1>
-    <p class="sub">Texturas e mapeamento UV na orla de Copacabana, com as luzes da entrega 2.</p>
+    <h1>Rio <span>Zero</span> · Entrega 4</h1>
+    <p class="sub">Modo apresentação (jogo pausado): texturas, câmeras e luzes das entregas 2 e 3. H volta ao jogo.</p>
     <div class="abas" role="tablist">
       <button type="button" role="tab" data-aba="texturas">Texturas</button>
       <button type="button" role="tab" data-aba="cameras">Câmeras</button>
@@ -329,15 +329,15 @@ export function criarPainel({ cameras, luzes, medir, texturas }) {
     $("p-params").textContent = `${num(persp.aspect, 2)} · ${num(persp.near, 2)} · ${persp.far}`;
     $("p-matriz-nota").innerHTML = cameras.ortografico
       ? "Última linha (0, 0, 0, 1): w = 1, não há divisão. O tamanho na tela não depende da distância."
-      : `Última linha (0, 0, −1, 0): w = −z, a GPU divide por w e o que está longe encolhe. Montada em <code>matrizPerspectiva()</code>, em src/cameras.js${conferirComThree(persp) ? ', <span class="ok">igual à do three.js</span>' : ""}.`;
+      : `Última linha (0, 0, −1, 0): w = −z, a GPU divide por w e o que está longe encolhe. Montada em <code>matrizPerspectiva()</code>, em src/core/CameraRig.js${conferirComThree(persp) ? ', <span class="ok">igual à do three.js</span>' : ""}.`;
 
     // altura na tela = distância entre os pés e o topo da cabeça depois da projeção.
     // A perspectiva divide pela profundidade (o -z no espaço da câmera), não pela distância em linha reta.
     const alturaTela = window.innerHeight;
     medir.forEach(({ nome, obj }, i) => {
       base.copy(obj.position);
-      topo.copy(obj.position).setY(obj.position.y + 2.5);
-      centro.copy(obj.position).setY(1.25).applyMatrix4(cam.matrixWorldInverse);
+      topo.copy(obj.position).setY(obj.position.y + 1.9);
+      centro.copy(obj.position).setY(0.95).applyMatrix4(cam.matrixWorldInverse);
       const profundidade = -centro.z;
       centro.applyMatrix4(cam.projectionMatrix);
       base.project(cam);
@@ -356,8 +356,8 @@ export function criarPainel({ cameras, luzes, medir, texturas }) {
     sincronizar,
     atualizar,
     mostrarAba,
-    alternarVisivel() {
-      el.classList.toggle("oculto");
+    alternarVisivel(v) {
+      el.classList.toggle("oculto", v === undefined ? undefined : !v);
     },
   };
 }

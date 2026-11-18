@@ -95,10 +95,10 @@ export function criarLuzes(scene, { postes, fogueira, rafael }) {
   });
 
   // 5) Lanterna do Rafael: SpotLight presa na ponta da besta, aponta para onde ele mira
-  const cotovelo = rafael.userData.bracoD.cotovelo;
+  const cotovelo = rafael.userData.ponta; // ponta da arma em uso (Rafael.js)
   const lanterna = new THREE.SpotLight(0xfff1d6, 90, 32, THREE.MathUtils.degToRad(22), 0.45, 1.6);
-  lanterna.position.set(0, -1.0, 0.05);
-  lanterna.target.position.set(0, -14, 0.05); // ao longo do braço, que está esticado para a frente
+  lanterna.position.set(0, 0, 0);
+  lanterna.target.position.set(0, -14, 0); // ao longo do braço, que está esticado para a frente
   lanterna.castShadow = true;
   lanterna.shadow.mapSize.set(1024, 1024);
   lanterna.shadow.camera.near = 0.3;
@@ -106,6 +106,7 @@ export function criarLuzes(scene, { postes, fogueira, rafael }) {
   lanterna.shadow.bias = -0.0008;
   const lente = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.12), new THREE.MeshBasicMaterial({ color: 0xfff4dc }));
   lente.position.copy(lanterna.position);
+  lente.visible = false; // a lente de verdade é a do modelo da besta
   cotovelo.add(lanterna, lanterna.target, lente);
   const helperLanterna = new THREE.SpotLightHelper(lanterna);
   helpers.add(helperLanterna);

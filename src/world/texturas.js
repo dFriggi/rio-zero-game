@@ -102,6 +102,46 @@ export function uvEmMetros(geometria, metros) {
   return geometria;
 }
 
+// Entrega 4: o mesmo cálculo para as caixas arredondadas (RoundedBoxGeometry) dos personagens.
+// Na quina arredondada a normal vai virando aos poucos, e escolher o eixo pela normal de cada vértice
+// faria a imagem pular no meio da curva. Aqui o eixo vem da face a que o vértice pertence: a geometria
+// guarda as seis faces em ordem (+x, -x, +y, -y, +z, -z), com o mesmo número de vértices em cada uma,
+// então a imagem continua sem emenda até a beirada da face.
+const NORMAIS_FACE = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
+export function uvPorFace(geometria, metros) {
+  const pos = geometria.attributes.position;
+  const uv = geometria.attributes.uv;
+  const porFace = pos.count / 6;
+  for (let i = 0; i < pos.count; i++) {
+    const [nx, ny, nz] = NORMAIS_FACE[Math.min(5, Math.floor(i / porFace))];
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    let u;
+    let v;
+    if (nx !== 0) {
+      u = nx > 0 ? -z : z;
+      v = y;
+    } else if (nz !== 0) {
+      u = nz > 0 ? x : -x;
+      v = y;
+    } else {
+      u = x;
+      v = ny > 0 ? -z : z;
+    }
+    uv.setXY(i, u / metros, v / metros);
+  }
+  uv.needsUpdate = true;
+  return geometria;
+}
+
 // Multiplica as coordenadas UV (cápsulas e cilindros: o u dá a volta e o v percorre o comprimento)
 export function escalarUV(geometria, su, sv) {
   const uv = geometria.attributes.uv;
@@ -114,30 +154,39 @@ export function escalarUV(geometria, su, sv) {
 // Materiais texturizados e os modos da demonstração (com textura, sem textura e grade UV)
 // ---------------------------------------------------------------------------------------------
 const registrados = [];
+// modo atual: os zumbis que surgem no meio da partida já nascem no modo escolhido
+let modoAtual = "normal";
+let gradeAtual = null;
 
 export function materialTexturizado(mapa, { cor = 0xffffff, relevo = null, escalaRelevo = 1 } = {}) {
   const material = new THREE.MeshLambertMaterial({ color: cor, map: mapa, bumpMap: relevo, bumpScale: escalaRelevo });
   material.userData.textura = mapa.name; // o painel de UV usa para achar as faces com esta textura
-  registrados.push({ material, mapa, relevo, cor: material.color.clone() });
+  const r = { material, mapa, relevo, cor: material.color.clone() };
+  registrados.push(r);
+  if (modoAtual !== "normal") aplicarModo(r);
   return material;
 }
 
-export function definirModoTextura(modo, gradeUV) {
-  for (const r of registrados) {
-    const m = r.material;
-    if (modo === "uv") {
-      m.map = gradeUV;
-      m.bumpMap = null;
-      m.color.set(0xffffff);
-    } else if (modo === "sem") {
-      m.map = null;
-      m.bumpMap = null;
-      m.color.copy(r.cor).multiply(r.mapa.userData.corMedia);
-    } else {
-      m.map = r.mapa;
-      m.bumpMap = r.relevo;
-      m.color.copy(r.cor);
-    }
-    m.needsUpdate = true;
+function aplicarModo(r) {
+  const m = r.material;
+  if (modoAtual === "uv") {
+    m.map = gradeAtual;
+    m.bumpMap = null;
+    m.color.set(0xffffff);
+  } else if (modoAtual === "sem") {
+    m.map = null;
+    m.bumpMap = null;
+    m.color.copy(r.cor).multiply(r.mapa.userData.corMedia);
+  } else {
+    m.map = r.mapa;
+    m.bumpMap = r.relevo;
+    m.color.copy(r.cor);
   }
+  m.needsUpdate = true;
+}
+
+export function definirModoTextura(modo, gradeUV) {
+  modoAtual = modo;
+  gradeAtual = gradeUV;
+  for (const r of registrados) aplicarModo(r);
 }

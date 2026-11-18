@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rio Zero</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;800&family=Space+Grotesk:wght@500;700&display=swap" />
     <link rel="stylesheet" href="style.css" />
     <script type="importmap">
       {
@@ -18,12 +21,10 @@
     <aside id="painel" aria-label="Controles da demonstração"></aside>
     <p id="carregando">Carregando as texturas…</p>
 
-    <div id="ajuda">
-      <b>WASD</b> mover &nbsp;·&nbsp; <b>Espaço</b> ou clique atirar &nbsp;·&nbsp; <b>R</b> recomeçar
-      &nbsp;·&nbsp; <b>T</b> texturas &nbsp;·&nbsp; <b>U</b> grade UV &nbsp;·&nbsp; <b>C</b> câmera
-      &nbsp;·&nbsp; <b>1–5</b> luzes (<b>Shift</b> = só ela, <b>0</b> = todas) &nbsp;·&nbsp;
-      <b>P</b> perspectiva × ortográfica &nbsp;·&nbsp; <b>- / +</b> campo de visão &nbsp;·&nbsp;
-      <b>L</b> fontes de luz &nbsp;·&nbsp; <b>G</b> grade &nbsp;·&nbsp; <b>H</b> painel
+    <div id="ajuda" hidden>
+      Modo apresentação · <b>H</b> volta ao jogo &nbsp;·&nbsp; <b>T</b> texturas &nbsp;·&nbsp; <b>U</b> grade UV &nbsp;·&nbsp;
+      <b>C</b> câmera &nbsp;·&nbsp; <b>1–5</b> luzes (<b>Shift</b> = só ela, <b>0</b> = todas) &nbsp;·&nbsp;
+      <b>P</b> perspectiva × ortográfica &nbsp;·&nbsp; <b>- / +</b> campo de visão &nbsp;·&nbsp; <b>L</b> fontes de luz &nbsp;·&nbsp; <b>G</b> grade
     </div>
 
     <script type="module" src="src/main.js"></script>
